@@ -314,7 +314,7 @@ bignum_realloc endp
 ; +                12345678
 ;   13782|AFC53268|5B74564C
 
-bignum_add_i proc c uses edi esi, bn: ptr bignum, num: dword, pos: dword
+bignum_add_i proc c uses edi esi ecx, bn: ptr bignum, num: dword, pos: dword
 	local sz: dword
 	
 	; без переполнения
@@ -354,7 +354,37 @@ bignum_add_i proc c uses edi esi, bn: ptr bignum, num: dword, pos: dword
 bignum_add_i endp
 
 
-bignum_add proc c res: ptr bignum, arg1: ptr bignum, arg2: ptr bignum
+bignum_add proc c uses edi esi ebx ecx eax, res: ptr bignum, arg1: ptr bignum, arg2: ptr bignum
+    local sz:dword
+    local count:dword
+    local current:dword
+    
+    mov count, 0
+    
+    mov edi, [res]
+    assume edi: ptr bignum
+    
+    mov esi, [arg1]
+    assume esi: ptr bignum
+    
+    mov ebx, [arg2]
+    assume ebx: ptr bignum
+    
+    invoke crt_memcpy, edi, esi, SIZEOF bignum
+    
+    mov ecx, [ebx].buf
+    mov eax, [ebx].chunk_count
+    mov [sz], eax
+    ; Без учёта знака
+    .while [sz] > 0
+		mov eax, dword ptr [ecx]
+		invoke bignum_add_i, edi, eax, [count]
+		
+		add ecx, 4
+		
+		inc [count]
+		dec [sz]
+    .endw
     
     ret
 bignum_add endp
@@ -378,14 +408,17 @@ main proc c argc:DWORD, argv:DWORD, envp:DWORD
     local bn2:bignum
     local res:bignum
 	
-	invoke bignum_set_str, addr bn1, $CTA0("ffffffffffffffffffffffff")
-	;invoke bignum_set_str, addr bn2, $CTA0("45111111111111111123")
-	invoke bignum_set_i, addr bn2, 123456h
+	invoke bignum_set_str, addr bn1, $CTA0("FFFFFFFF123")
+	invoke bignum_set_str, addr bn2, $CTA0("EEEEEEEE")
+	;invoke bignum_set_i, addr bn2, 123456h
 	invoke bignum_print, addr bn1
 	invoke bignum_print, addr bn2
 	
-	invoke bignum_add_i, addr bn1, 1h, 0
-	invoke bignum_print, addr bn1
+	;invoke bignum_add_i, addr bn1, 1h, 0
+	;invoke bignum_print, addr bn1
+	
+	invoke bignum_add, addr res, addr bn1, addr bn2
+	invoke bignum_print, addr res
 	
     mov eax, 0
     ret
