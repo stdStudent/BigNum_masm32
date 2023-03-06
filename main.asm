@@ -309,6 +309,10 @@ bignum_realloc proc c uses edi esi ecx, bn: ptr bignum, new_chunk_size: dword
 	ret ; eax
 bignum_realloc endp
 
+exit_err proc c, msg:dword
+	invoke crt_printf, $CTA0("%s\n"), msg
+	invoke crt_exit, 1
+exit_err endp
 
 ;   13782|AFC53268|493FFFD4
 ; +                12345678
@@ -353,13 +357,49 @@ bignum_add_i proc c uses edi esi ecx, bn: ptr bignum, num: dword, pos: dword
 	ret
 bignum_add_i endp
 
+; proc sub_i
+bignum_sub_i proc c uses edi esi ecx, bn: ptr bignum, num: dword, pos: dword
+	local sz: dword
+	
+	; без переполнения
+	mov edi, [bn]
+    assume edi: ptr bignum
+    
+    mov ecx, [edi].chunk_count
+    mov [sz], ecx
+    
+    mov esi, [edi].buf
+    mov ecx, [pos]
+    imul ecx, 4
+    add esi, ecx
+    
+    mov eax, [num]
+    .if eax > dword ptr [esi]
+		invoke exit_err, $CTA0("bignum_sub_i(): arg1 must be lower than arg2")
+    .endif
+    
+    sub dword ptr [esi], eax
+    
+    .if CARRY?
+		add esi, 4
+		sub dword ptr [esi], 1
+    .endif
+    
+	ret
+bignum_sub_i endp
 
-bignum_add proc c uses edi esi ebx ecx eax, res: ptr bignum, arg1: ptr bignum, arg2: ptr bignum
+bignum_sub proc c res: ptr bignum, arg1: ptr bignum, arg2: ptr bignum
     local sz:dword
     local count:dword
     local current:dword
+    local minus_bool_1:dword
+    local minus_bool_2:dword
+    local regular_bool:dword
     
-    mov count, 0
+    mov [count], 0
+    mov [minus_bool_1], 0
+    mov [minus_bool_2], 0
+    mov [regular_bool], 0
     
     mov edi, [res]
     assume edi: ptr bignum
@@ -370,31 +410,133 @@ bignum_add proc c uses edi esi ebx ecx eax, res: ptr bignum, arg1: ptr bignum, a
     mov ebx, [arg2]
     assume ebx: ptr bignum
     
+    .if [esi].sign == 1
+		mov [minus_bool_1], 1
+		mov [regular_bool], 1
+    .endif
+
+	.if [ebx].sign == 1
+		mov [minus_bool_2], 1
+		mov [regular_bool], 1
+	.endif
+	
+	.if [minus_bool_1] == 1
+		.if [minus_bool_2] == 1
+			mov [regular_bool], 0
+		.endif
+	.endif
+    
     invoke crt_memcpy, edi, esi, SIZEOF bignum
     
     mov ecx, [ebx].buf
     mov eax, [ebx].chunk_count
     mov [sz], eax
-    ; Без учёта знака
-    .while [sz] > 0
-		mov eax, dword ptr [ecx]
-		invoke bignum_add_i, edi, eax, [count]
-		
-		add ecx, 4
-		
-		inc [count]
-		dec [sz]
-    .endw
-    
-    ret
-bignum_add endp
-
-; proc sub_i
-
-bignum_sub proc c res: ptr bignum, arg1: ptr bignum, arg2: ptr bignum
+    .if [regular_bool] == 0
+		.while [sz] > 0
+			mov eax, dword ptr [ecx]
+			invoke bignum_sub_i, edi, eax, [count]
+			
+			add ecx, 4
+			
+			inc [count]
+			dec [sz]
+		.endw
+	;.elseif [minus_bool_1] != 0
+	;	.while [sz] > 0
+	;		mov eax, dword ptr [ecx]
+	;		invoke bignum_add_i, edi, eax, [count]
+	;		
+	;		add ecx, 4
+	;		
+	;		inc [count]
+	;		dec [sz]
+	;	.endw
+	;.elseif [minus_bool_2] != 0
+	;	.while [sz] > 0
+	;		mov eax, dword ptr [ecx]
+	;		invoke bignum_add_i, edi, eax, [count]
+	;		
+	;		add ecx, 4
+	;		
+	;		inc [count]
+	;		dec [sz]
+	;	.endw
+	.else
+		.while [sz] > 0
+			mov eax, dword ptr [ecx]
+			invoke bignum_add_i, edi, eax, [count]
+			
+			add ecx, 4
+			
+			inc [count]
+			dec [sz]
+		.endw
+	.endif
     
     ret
 bignum_sub endp
+
+bignum_add proc c uses edi esi ebx ecx eax, res: ptr bignum, arg1: ptr bignum, arg2: ptr bignum
+    local sz:dword
+    local count:dword
+    local current:dword
+    local minus_bool_1:dword
+    local minus_bool_2:dword
+    local regular_bool:dword
+    
+    mov [count], 0
+    mov [minus_bool_1], 0
+    mov [minus_bool_2], 0
+    mov [regular_bool], 0
+    
+    mov edi, [res]
+    assume edi: ptr bignum
+    
+    mov esi, [arg1]
+    assume esi: ptr bignum
+    
+    mov ebx, [arg2]
+    assume ebx: ptr bignum
+    
+    .if [esi].sign == 1
+		mov [minus_bool_1], 1
+		mov [regular_bool], 1
+    .endif
+
+	.if [ebx].sign == 1
+		mov [minus_bool_2], 1
+		mov [regular_bool], 1
+	.endif
+	
+	.if [minus_bool_1] == 1
+		.if [minus_bool_2] == 1
+			mov [regular_bool], 0
+		.endif
+	.endif
+    
+    invoke crt_memcpy, edi, esi, SIZEOF bignum
+    
+    mov ecx, [ebx].buf
+    mov eax, [ebx].chunk_count
+    mov [sz], eax
+    .if [regular_bool] == 0
+		.while [sz] > 0
+			mov eax, dword ptr [ecx]
+			invoke bignum_add_i, edi, eax, [count]
+			
+			add ecx, 4
+			
+			inc [count]
+			dec [sz]
+		.endw
+	.elseif [minus_bool_2] != 0
+		invoke bignum_sub, edi, esi, ebx
+	.elseif [minus_bool_1] != 0
+		invoke bignum_sub, edi, ebx, esi
+	.endif
+    
+    ret
+bignum_add endp
 
 
 bignum_mul_ui proc c res: ptr bignum, arg1: ptr bignum, arg2: dword
@@ -408,8 +550,8 @@ main proc c argc:DWORD, argv:DWORD, envp:DWORD
     local bn2:bignum
     local res:bignum
 	
-	invoke bignum_set_str, addr bn1, $CTA0("FFFFFFFF123")
-	invoke bignum_set_str, addr bn2, $CTA0("EEEEEEEE")
+	invoke bignum_set_str, addr bn1, $CTA0("00000004")
+	invoke bignum_set_str, addr bn2, $CTA0("00000002")
 	;invoke bignum_set_i, addr bn2, 123456h
 	invoke bignum_print, addr bn1
 	invoke bignum_print, addr bn2
@@ -417,7 +559,13 @@ main proc c argc:DWORD, argv:DWORD, envp:DWORD
 	;invoke bignum_add_i, addr bn1, 1h, 0
 	;invoke bignum_print, addr bn1
 	
-	invoke bignum_add, addr res, addr bn1, addr bn2
+	;invoke bignum_add, addr res, addr bn1, addr bn2
+	;invoke bignum_print, addr res
+	
+	;invoke bignum_sub_i, addr bn1, 0ffffffffh, 0
+	;invoke bignum_print, addr bn1
+	
+	invoke bignum_sub, addr res, addr bn1, addr bn2
 	invoke bignum_print, addr res
 	
     mov eax, 0
