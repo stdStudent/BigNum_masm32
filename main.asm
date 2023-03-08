@@ -7,6 +7,8 @@ include c:\masm32\include\kernel32.inc
 include c:\masm32\include\user32.inc
 include c:\masm32\include\Strings.mac
 
+;function1 proto :DWORD, :DWORD
+
 bignum struct
     chunk_count dword    ?  ; число чанков (с dowrd'ами) в массиве buf   
     sign        dword    ?  ; флаг знака (sign = 0 - полож., sign = 1 - отриц.)   
@@ -48,6 +50,14 @@ bignum_init_null proc c uses edi ecx, bn: ptr bignum, chunk_count: dword
     imul ecx, 4
     invoke crt_malloc, ecx      ; выдел€ем пам€ть под массив размера 4*chunk_count
     mov [edi].buf, eax          ; инициализируем поле buf
+    
+    ; обнул€ем число
+    mov ecx, [edi].chunk_count
+    .while ecx > 0
+		mov dword ptr [eax], 0
+		dec ecx
+		add eax, 4 ; next chunk
+    .endw
     
     ret
 bignum_init_null endp
@@ -188,7 +198,9 @@ bignum_set_str proc c uses edi esi , bn: ptr bignum, string: dword
 bignum_set_str endp
 
 
-
+; Todo: do not print 0's
+; 000000000|000000002
+; -> 000000002
 bignum_print proc c bn: ptr bignum
      ; for(int i = bn.chunk_count-1; i >= 0; --i)
     ;     printf(format_hex, bn.buf[i]);
@@ -391,6 +403,7 @@ bignum_sub_i proc c uses edi esi ecx ebx, bn: ptr bignum, num: dword, pos: dword
 	ret
 bignum_sub_i endp
 
+; Todo invoke memcpy
 bignum_sub proc c res: ptr bignum, arg1: ptr bignum, arg2: ptr bignum
     local sz:dword
     local count:dword
@@ -479,6 +492,7 @@ bignum_sub proc c res: ptr bignum, arg1: ptr bignum, arg2: ptr bignum
     ret
 bignum_sub endp
 
+; Todo invoke memcpy
 bignum_add proc c uses edi esi ebx ecx eax, res: ptr bignum, arg1: ptr bignum, arg2: ptr bignum
     local sz:dword
     local count:dword
@@ -569,20 +583,75 @@ bignum_add proc c uses edi esi ebx ecx eax, res: ptr bignum, arg1: ptr bignum, a
     ret
 bignum_add endp
 
+;         0FF00E1|000200E2               000200E2         0FF00E1
+;	  	          11111111               11111111         11111111
+;   ----------------------               ------------    --------------
+; 11000E|FFEF2222|33331102              2231|33331102     11000E|FFEEFFF1
 
-bignum_mul_ui proc c res: ptr bignum, arg1: ptr bignum, arg2: dword
+
+bignum_mul_ui proc c uses edi esi ebx ecx, res: ptr bignum, arg1: ptr bignum, arg2: dword
+    local sz:dword
+    local count:dword
+    
+    mov edi, [res]
+    assume edi: ptr bignum
+    
+    mov esi, [arg1]
+    assume esi: ptr bignum
+    
+    mov ecx, [esi].chunk_count
+    inc ecx
+    invoke bignum_init_null, edi, ecx
+    
+    ;mov ecx, [esi].chunk_count
+    ;imul ecx, 4
+    ;invoke crt_memcpy, [edi].buf, [esi].buf, ecx
+    
+    mov ecx, [esi].buf
+    mov eax, [esi].chunk_count
+    mov ebx, [edi].buf ;result
+    mov [sz], eax
+    .while [sz] > 0
+		mov eax, dword ptr [ecx]
+		mul dword ptr [arg2]
+		
+		add dword ptr [ebx], eax
+		add ebx, 4
+		add dword ptr [ebx], edx
+		add ecx, 4
+		
+		dec [sz]
+	.endw
     
     ret
 bignum_mul_ui endp
 
+;                   FF0137CD|AA553711
+;                   CDEE0000|155EECC0
+; -----------------------------------
+; cd210cd1|a7e4402c|8ba6fc14|ebeaf8c0
+; max: сумма разр€дов
+
+;          FF0137CD|AA553711
+;                   155EECC0
+; 1549A7DA|BCD8FC14|EBEAF8C0 
+
+;          FF0137CD|AA553711
+;                   CDEE0000
+; CD210CD1|929A9851|CECE0000|00000000 ; т.к. второй чанк
+
+;   CD210CD1|929A9851|CECE0000|00000000
+;            1549A7DA|BCD8FC14|EBEAF8C0 
+; +
+;   cd210cd1|a7e4402c|8ba6fc14|ebeaf8c0
 
 main proc c argc:DWORD, argv:DWORD, envp:DWORD
     local bn1:bignum
     local bn2:bignum
     local res:bignum
 	
-	invoke bignum_set_str, addr bn1, $CTA0("0F0FFFFF00000000000001")
-	invoke bignum_set_str, addr bn2, $CTA0("0F0FEEFF0000000000003")
+	invoke bignum_set_str, addr bn1, $CTA0("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF0137CDAA553711")
+	invoke bignum_set_str, addr bn2, $CTA0("0")
 	;invoke bignum_set_i, addr bn2, 123456h
 	invoke bignum_print, addr bn1
 	invoke bignum_print, addr bn2
@@ -596,8 +665,11 @@ main proc c argc:DWORD, argv:DWORD, envp:DWORD
 	;invoke bignum_sub_i, addr bn1, 0ffffffffh, 0
 	;invoke bignum_print, addr bn1
 	
-	invoke bignum_sub, addr res, addr bn1, addr bn2
+	;invoke bignum_sub, addr res, addr bn1, addr bn2
+	invoke bignum_mul_ui, addr res, addr bn1, -0h
 	invoke bignum_print, addr res
+	;invoke bignum_print, addr bn1
+	;invoke bignum_print, addr bn2
 	
     mov eax, 0
     ret
