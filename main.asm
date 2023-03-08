@@ -358,7 +358,7 @@ bignum_add_i proc c uses edi esi ecx, bn: ptr bignum, num: dword, pos: dword
 bignum_add_i endp
 
 ; proc sub_i
-bignum_sub_i proc c uses edi esi ecx, bn: ptr bignum, num: dword, pos: dword
+bignum_sub_i proc c uses edi esi ecx ebx, bn: ptr bignum, num: dword, pos: dword
 	local sz: dword
 	
 	; без переполнения
@@ -375,7 +375,10 @@ bignum_sub_i proc c uses edi esi ecx, bn: ptr bignum, num: dword, pos: dword
     
     mov eax, [num]
     .if eax > dword ptr [esi]
-		invoke exit_err, $CTA0("bignum_sub_i(): arg1 must be lower than arg2")
+		;invoke exit_err, $CTA0("bignum_sub_i(): arg1 must be lower than arg2")
+		mov ebx, dword ptr [esi]
+		xchg eax, ebx
+		mov dword ptr [esi], ebx
     .endif
     
     sub dword ptr [esi], eax
@@ -529,10 +532,38 @@ bignum_add proc c uses edi esi ebx ecx eax, res: ptr bignum, arg1: ptr bignum, a
 			inc [count]
 			dec [sz]
 		.endw
-	.elseif [minus_bool_2] != 0
-		invoke bignum_sub, edi, esi, ebx
-	.elseif [minus_bool_1] != 0
-		invoke bignum_sub, edi, ebx, esi
+	;.elseif [minus_bool_1] != 0
+	;	;invoke bignum_sub, edi, esi, ebx
+	;	.while [sz] > 0
+	;		mov eax, dword ptr [ecx]
+	;		invoke bignum_sub_i, edi, eax, [count]
+	;		
+	;		add ecx, 4
+	;		
+	;		inc [count]
+	;		dec [sz]
+	;	.endw
+	;.elseif [minus_bool_2] != 0
+	;	;invoke bignum_sub, edi, ebx, esi
+	;	.while [sz] > 0
+	;		mov eax, dword ptr [ecx]
+	;		invoke bignum_sub_i, edi, eax, [count]
+	;		
+	;		add ecx, 4
+	;		
+	;		inc [count]
+	;		dec [sz]
+	;	.endw
+	.else
+		.while [sz] > 0
+			mov eax, dword ptr [ecx]
+			invoke bignum_sub_i, edi, eax, [count]
+			
+			add ecx, 4
+			
+			inc [count]
+			dec [sz]
+		.endw
 	.endif
     
     ret
@@ -550,8 +581,8 @@ main proc c argc:DWORD, argv:DWORD, envp:DWORD
     local bn2:bignum
     local res:bignum
 	
-	invoke bignum_set_str, addr bn1, $CTA0("00000004")
-	invoke bignum_set_str, addr bn2, $CTA0("00000002")
+	invoke bignum_set_str, addr bn1, $CTA0("0F0FFFFF00000000000001")
+	invoke bignum_set_str, addr bn2, $CTA0("0F0FEEFF0000000000003")
 	;invoke bignum_set_i, addr bn2, 123456h
 	invoke bignum_print, addr bn1
 	invoke bignum_print, addr bn2
