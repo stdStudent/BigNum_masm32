@@ -33,15 +33,13 @@ new_line db 13,10,0
 format_hex db "%08X", 0
 format_hex_first db "%X", 0
 minus db "-", 0
-error_str db "Error string!", 0
+error_str db "Error string!", 13, 10, 0
 format_str db "%s", 0
 
 
 .code
-; выделяет память под массив dword'ов buf размера chunk_count 
-; и заполняет структуру большого числа
-
-
+;; выделяет память под массив dword'ов buf размера chunk_count 
+;; и заполняет структуру большого числа
 bignum_init_null proc c uses edi ecx, bn: ptr bignum, chunk_count: dword
     mov edi, [bn]               ; помещаем в edi указатель на структуру большого числа
     assume edi:ptr bignum
@@ -52,7 +50,7 @@ bignum_init_null proc c uses edi ecx, bn: ptr bignum, chunk_count: dword
     invoke crt_malloc, ecx      ; выделяем память под массив размера 4*chunk_count
     mov [edi].buf, eax          ; инициализируем поле buf
     
-    ; обнуляем число
+    ;; обнуляем число
     mov ecx, [edi].chunk_count
     .while ecx > 0
 		mov dword ptr [eax], 0
@@ -64,7 +62,7 @@ bignum_init_null proc c uses edi ecx, bn: ptr bignum, chunk_count: dword
 bignum_init_null endp
 
 
-;Инициализируем беззнаковое большое число
+;; Инициализируем беззнаковое большое число
 bignum_set_ui proc c uses edi esi, bn: ptr bignum, number: dword
     invoke bignum_init_null, [bn], 1
 	
@@ -104,8 +102,8 @@ bignum_set_i proc c uses edi esi, bn: ptr bignum, number: dword
 bignum_set_i endp
 
 
+;; return (char*)str + len - n (вернёт посление n символов строки)
 lastN proc c uses esi edi ecx, s: dword, n:dword
-	; return (char*)str + len - n вернёт посление n символов
 	invoke crt_strlen, s ; eax - кол-во символов
 	.if eax <= [n]
 		mov eax, [s]
@@ -121,6 +119,8 @@ lastN proc c uses esi edi ecx, s: dword, n:dword
     ret
 lastN endp
 
+
+;; строка должна содержать '-', 0-9 и A-F
 check_str proc c uses esi ebx, string: dword
 	local i: dword
 	local flag: dword
@@ -170,11 +170,12 @@ check_str proc c uses esi ebx, string: dword
 	ret
 check_str endp
 
+
 bignum_set_str proc c uses edi esi, bn: ptr bignum, string: dword
     local i: dword
     local sign: byte
     mov [sign], 0
-    mov [i], 0             ; 
+    mov [i], 0             ; counter по строке
 	
 	mov edi, [bn]
 	assume edi:ptr bignum
@@ -245,6 +246,7 @@ bignum_set_str proc c uses edi esi, bn: ptr bignum, string: dword
     ret
 bignum_set_str endp
 
+
 bignum_print proc c bn: ptr bignum
     local i: dword
 
@@ -266,6 +268,7 @@ bignum_print proc c bn: ptr bignum
     invoke crt_printf, addr format_hex_first, dword ptr [esi]
     dec [i]
 
+	;; вывод всех чанков большого числа
     .while [i] > 0  
         mov esi, [edi].buf
         mov edx, [i]
@@ -316,6 +319,8 @@ bignum_and proc c uses edi esi ebx, res: ptr bignum, arg1: ptr bignum, arg2: ptr
 		mov eax, dword ptr [edi]
 		and eax, dword ptr [esi]
 		mov dword ptr [ebx], eax
+		
+		;; переходим к следующим чанкам
 		add edi, 4
 		add esi, 4
 		add ebx, 4
@@ -323,6 +328,7 @@ bignum_and proc c uses edi esi ebx, res: ptr bignum, arg1: ptr bignum, arg2: ptr
     
     ret
 bignum_and endp
+
 
 bignum_realloc proc c uses edi esi ecx, bn: ptr bignum, new_chunk_size: dword
     local old_sz: dword
@@ -360,7 +366,7 @@ bignum_realloc endp
 bignum_add_i proc c uses edi esi ecx eax, bn: ptr bignum, num: dword, pos: dword
 	local sz: dword
 	
-	; без переполнения
+	;; без переполнения
 	mov edi, [bn]
     assume edi: ptr bignum
     
@@ -375,7 +381,7 @@ bignum_add_i proc c uses edi esi ecx eax, bn: ptr bignum, num: dword, pos: dword
     mov eax, [num]
     add dword ptr [esi], eax
     
-    ; проверяем переполнение
+    ;; проверяем переполнение
     .while CARRY?
 		mov ecx, [sz]
 		inc [pos]
@@ -396,11 +402,11 @@ bignum_add_i proc c uses edi esi ecx eax, bn: ptr bignum, num: dword, pos: dword
 	ret
 bignum_add_i endp
 
-; proc sub_i
+
 bignum_sub_i proc c uses edi esi ecx ebx, bn: ptr bignum, num: dword, pos: dword
 	local sz: dword
 	
-	; без переполнения
+	;; без переполнения
 	mov edi, [bn]
     assume edi: ptr bignum
     
@@ -421,6 +427,7 @@ bignum_sub_i proc c uses edi esi ecx ebx, bn: ptr bignum, num: dword, pos: dword
     
     sub dword ptr [esi], eax
     
+    ;; проверяем переполнение
     .if CARRY?
 		add esi, 4
 		sub dword ptr [esi], 1
@@ -429,6 +436,11 @@ bignum_sub_i proc c uses edi esi ecx ebx, bn: ptr bignum, num: dword, pos: dword
 	ret
 bignum_sub_i endp
 
+
+;; сравнивает два числа
+;; return 0 - равны
+;;        1 - первое больше
+;;       -1 - второе больше
 bignum_compare proc c uses esi edi ebx ecx, arg1: ptr bignum, arg2: ptr bignnum
 	mov esi, [arg1]
 	assume esi: ptr bignum
@@ -467,6 +479,7 @@ bignum_compare proc c uses esi edi ebx ecx, arg1: ptr bignum, arg2: ptr bignnum
 	.endif
 	ret
 bignum_compare endp
+
 
 bignum_sub proc c uses esi edi ebx, res: ptr bignum, arg1: ptr bignum, arg2: ptr bignum
     local sz:dword
@@ -518,6 +531,7 @@ bignum_sub proc c uses esi edi ebx, res: ptr bignum, arg1: ptr bignum, arg2: ptr
     mov ecx, [esi].sign
     mov [edi].sign, ecx
     
+    ;; записали в результат первое число
     mov eax, [esi].buf
     mov ecx, [esi].chunk_count
     .while ecx > 0
@@ -527,6 +541,7 @@ bignum_sub proc c uses esi edi ebx, res: ptr bignum, arg1: ptr bignum, arg2: ptr
 		dec ecx
     .endw
     
+    ;; вычитаем или складываем в зависимости от знаков 
     mov ecx, [ebx].buf
     mov eax, [ebx].chunk_count
     mov [sz], eax
@@ -586,6 +601,7 @@ bignum_sub proc c uses esi edi ebx, res: ptr bignum, arg1: ptr bignum, arg2: ptr
     ret
 bignum_sub endp
 
+
 bignum_add proc c uses edi esi ebx ecx eax, res: ptr bignum, arg1: ptr bignum, arg2: ptr bignum
     local sz:dword
     local count:dword
@@ -625,6 +641,7 @@ bignum_add proc c uses edi esi ebx ecx eax, res: ptr bignum, arg1: ptr bignum, a
 		.endif
 	.endif
 	
+	;; чтобы для результата записать нужное количество чанков
 	mov eax, [esi].chunk_count
 	.if eax > [ebx].chunk_count
 		inc eax
@@ -639,6 +656,7 @@ bignum_add proc c uses edi esi ebx ecx eax, res: ptr bignum, arg1: ptr bignum, a
     mov ecx, [esi].sign
     mov [edi].sign, ecx
     
+    ;; записали в результат первое число
     mov eax, [esi].buf
     mov ecx, [esi].chunk_count
     .while ecx > 0
@@ -646,8 +664,9 @@ bignum_add proc c uses edi esi ebx ecx eax, res: ptr bignum, arg1: ptr bignum, a
 		invoke bignum_add_i, edi, dword ptr[eax+ 4*ecx], ecx
 		inc ecx
 		dec ecx
-    .endw	
+    .endw
     
+    ;; складываем или вычитаем в зависимости от знаков
     mov ecx, [ebx].buf
     mov eax, [ebx].chunk_count
     mov [sz], eax
@@ -690,7 +709,7 @@ bignum_add proc c uses edi esi ebx ecx eax, res: ptr bignum, arg1: ptr bignum, a
 	mov ecx, [edi].chunk_count
 	mov eax, [edi].buf
 	xor edx, edx
-	.while ecx > 0
+	.while ecx > 0 ; сколько чанков с нулями в начале
 		dec ecx
 		.if dword ptr[eax+4*ecx] == 0
 			.if ecx != 0
@@ -703,12 +722,14 @@ bignum_add proc c uses edi esi ebx ecx eax, res: ptr bignum, arg1: ptr bignum, a
 		dec ecx
 	.endw
 	
+	;; удаляем чанки с нулями в начале
 	mov ecx, [edi].chunk_count
 	sub ecx, edx
 	invoke bignum_realloc, edi, ecx
     
     ret
 bignum_add endp
+
 
 bignum_mul_ui proc c uses edi esi ebx ecx eax edx, res: ptr bignum, arg1: ptr bignum, arg2: dword
     local sz:dword
@@ -750,6 +771,8 @@ bignum_mul_ui proc c uses edi esi ebx ecx eax edx, res: ptr bignum, arg1: ptr bi
     ret
 bignum_mul_ui endp
 
+
+;; в последний чанк большого числа записать массив
 sum_array proc c uses esi eax ecx edx, b1: ptr bignum, array: dword
 	local sz: dword
 	local i: dword
@@ -776,7 +799,8 @@ sum_array proc c uses esi eax ecx edx, b1: ptr bignum, array: dword
 	ret
 sum_array endp
 
-sdvig proc c uses esi eax ecx edx, bn: ptr bignum
+;; сдвинуть число влево на чанк
+mul_10_pow_8 proc c uses esi eax ecx edx, bn: ptr bignum
 	mov esi, [bn]
 	assume esi: ptr bignum
 	mov eax, [esi].buf
@@ -791,12 +815,13 @@ sdvig proc c uses esi eax ecx edx, bn: ptr bignum
 	mov dword ptr[eax], 000000000h
 	mov [esi].buf, eax
 	ret
-sdvig endp
- 
+mul_10_pow_8 endp
+
+
 bignum_mul proc c uses esi edi ebx, res: ptr bignum, arg1: ptr bignum, arg2: ptr bignum
 	local i:dword
 	local sz2: dword
-	local tmp_buf: dword
+	local tmp_buf: dword ; промежуточный результат умножения
 	local szRes: dword
 	local num: dword
 	local sign: dword
@@ -821,17 +846,18 @@ bignum_mul proc c uses esi edi ebx, res: ptr bignum, arg1: ptr bignum, arg2: ptr
 	mov ebx, [res]
 	assume ebx: ptr bignum
 	
+	;; определяем знак
 	mov ecx, 2
 	mov eax, [edi].sign
 	add eax, [esi].sign
 	xor edx, edx
-	div ecx
+	div ecx ; теперь в edx остаток от деления
 	mov [sign], edx
 	
 	mov eax, [esi].buf
 	.while [sz2] > 0
-		push eax		
-		.if [i] != 0
+		push eax ; сохраняем буфер второго аргумента		
+		.if [i] != 0 ; в первый раз не обновляем промежуточный массив
 			mov eax, [tmp_buf]
 			mov ecx, [szRes]
 			push ebx
@@ -841,23 +867,20 @@ bignum_mul proc c uses esi edi ebx, res: ptr bignum, arg1: ptr bignum, arg2: ptr
 				mov ebx, dword ptr[eax + ecx*4]
 				add ebx, dword ptr[edx + ecx*4]
 				add dword ptr[eax + ecx*4], ebx
-				inc ecx
-				dec ecx
 			.endw 
 			pop ebx
-		.endif
-		.if [i] != 0
+			
+			;; обнуляем edx
 			mov ecx, [szRes]
 			.while ecx > 0
 				dec ecx
 				mov dword ptr[edx+ecx*4], 0h
-				inc ecx
-				dec ecx
 			.endw
 			mov [ebx].buf, edx
 		.endif
 		pop eax
 		
+		;; переходим к следующему чанку, edi - первое число, [num] - следующий чанк
 		mov edx, [i]
 		mov ecx, edx
 		imul ecx, 4
@@ -866,12 +889,14 @@ bignum_mul proc c uses esi edi ebx, res: ptr bignum, arg1: ptr bignum, arg2: ptr
 		mov [num], ecx
 		invoke bignum_mul_ui, ebx, edi, [num]
 		
+		;; добавляем разряды (домножаем на размер чанка)
 		mov ecx, [i]
 		.while ecx > 0
-			invoke sdvig, ebx
+			invoke mul_10_pow_8, ebx
 			dec ecx
 		.endw
 		
+		;; в появившийся новый чанк (нулевой) добавить временный результат
 		mov edx, [ebx].buf
 		.if [i] != 0
 			invoke sum_array, ebx, [tmp_buf]
@@ -880,25 +905,27 @@ bignum_mul proc c uses esi edi ebx, res: ptr bignum, arg1: ptr bignum, arg2: ptr
 		dec [sz2]
 		inc [i]
 	.endw
+	
 	mov ecx, [sign]
 	mov [ebx].sign, ecx
 	
 	mov ecx, [ebx].chunk_count
 	mov eax, [ebx].buf
 	xor edx, edx
-	.while ecx > 0
+	.while ecx > 0 ; узнаём, сколько ненужных чанков с нулями в начале
 		dec ecx
 		.if dword ptr[eax+4*ecx] == 0
 			.if ecx != 0
 				inc edx
 			.endif
 		.else
-			.break		
+			.break ; чтобы не обнаружить чанк с нулями в середине	
 		.endif
 		inc ecx
 		dec ecx
 	.endw
 	
+	;; раз узнали, то можно и удалить
 	mov ecx, [ebx].chunk_count
 	sub ecx, edx
 	invoke bignum_realloc, ebx, ecx
@@ -911,16 +938,13 @@ main proc c argc:DWORD, argv:DWORD, envp:DWORD
     local bn2:bignum
     local res:bignum
 	
-	invoke bignum_set_str, addr bn1, $CTA0("FFfFFFFFFFFFFFFFFFFFFFFF")
-	invoke bignum_set_str, addr bn2, $CTA0("123")
-	;invoke bignum_set_i, addr bn2, 123456h
+	invoke bignum_set_str, addr bn1, $CTA0("-FF0137CDAA553711")
+	invoke bignum_set_str, addr bn2, $CTA0("-CDEE0000155EECC0")
 	invoke bignum_print, addr bn1
 	invoke bignum_print, addr bn2
 	
-	
+	;invoke bignum_set_i, addr bn2, 123456h
 	;invoke bignum_add_i, addr bn1, 1h, 0
-	;invoke bignum_print, addr bn1
-	
 	;invoke bignum_sub_i, addr bn1, 0ffffffffh, 0
 	;invoke bignum_print, addr bn1
 	
@@ -928,6 +952,7 @@ main proc c argc:DWORD, argv:DWORD, envp:DWORD
 	;invoke bignum_add, addr res, addr bn1, addr bn2
 	;invoke bignum_sub, addr res, addr bn1, addr bn2
 	invoke bignum_mul, addr res, addr bn1, addr bn2
+	
 	invoke bignum_print, addr res
 	
     mov eax, 0
